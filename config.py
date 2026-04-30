@@ -3,8 +3,11 @@ import os
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
 BASE_DIR = os.path.dirname(ROOT_DIR)
 PARENT_DIR = os.path.dirname(BASE_DIR)
-LOCAL_PATH = '../../task_7_vertual/records/' # LOCAL_PATH = os.path.join(PARENT_DIR, 'records/')
-DB_PATH = '../../task_7_vertual/adas_dms.db' # DB_PATH = os.path.join(PARENT_DIR, 'adas_dms.db')
+
+TASK_7_VERTUAL_PATH = os.path.join(BASE_DIR, "task_7_vertual")
+LOCAL_PATH = os.path.join(TASK_7_VERTUAL_PATH, 'records/')
+DB_PATH = os.path.join(TASK_7_VERTUAL_PATH, 'adas_dms.db')
+
 MODEL_PATH = os.path.join(PARENT_DIR, 'models/')
 SOUND_PATH = os.path.join(BASE_DIR, 'sounds/')
 REF_IMAGES = os.path.join(BASE_DIR, 'ref_images/')
