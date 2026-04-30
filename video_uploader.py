@@ -43,11 +43,13 @@ def _generate_filename() -> str:
 
 
 def _check_internet(timeout: int = 5) -> bool:
-    """Quick connectivity check."""
+    """Quick connectivity check via socket — works without HTTP server."""
+    import socket
     try:
-        requests.get("https://8.8.8.8", timeout=timeout)
+        socket.setdefaulttimeout(timeout)
+        socket.socket(socket.AF_INET, socket.SOCK_STREAM).connect(("8.8.8.8", 53))
         return True
-    except requests.exceptions.RequestException:
+    except (socket.error, OSError):
         return False
 
 
