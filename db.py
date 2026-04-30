@@ -94,8 +94,9 @@ def get_unuploaded_videos(limit=10, min_age_seconds=2, retry_interval=15, newest
     order = "DESC" if newest_first else "ASC"
     with sqlite3.connect(DB_PATH, check_same_thread=False) as conn:
         c = conn.cursor()
-        threshold_time = (datetime.now(timezone.utc) - timedelta(seconds=min_age_seconds)).isoformat()
-        retry_threshold = (datetime.now(timezone.utc) - timedelta(seconds=retry_interval)).isoformat()
+        # Use naive local time to match start_time format in DB (no timezone suffix)
+        threshold_time = (datetime.now() - timedelta(seconds=min_age_seconds)).strftime('%Y-%m-%dT%H:%M:%S')
+        retry_threshold = (datetime.now() - timedelta(seconds=retry_interval)).strftime('%Y-%m-%dT%H:%M:%S')
         c.execute(f"""
             SELECT id, file_path, camera_type, start_time, end_time, globalVideoId
             FROM videos
@@ -119,7 +120,7 @@ def increment_retry(video_id):
             SET retries = retries + 1,
                 last_try = ?
             WHERE id=?
-        """, (datetime.now(timezone.utc).isoformat(), video_id))
+        """, (datetime.now().strftime('%Y-%m-%dT%H:%M:%S'), video_id))
         conn.commit()
 
 # ==================== EVENT FUNCTIONS ====================
@@ -184,7 +185,7 @@ def increment_event_retry(event_id):
             SET retries = retries + 1,
                 last_try = ?
             WHERE id=?
-        """, (datetime.now(timezone.utc).isoformat(), event_id))
+        """, (datetime.now().strftime('%Y-%m-%dT%H:%M:%S'), event_id))
         conn.commit()
 
 def get_upload_backlog_counts():
