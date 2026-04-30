@@ -16,6 +16,7 @@ from db import (
     get_unuploaded_videos,
     mark_uploaded,
     increment_retry,
+    init_db,
 )
 
 logger = logging.getLogger(__name__)
@@ -238,6 +239,7 @@ def upload_loop() -> None:
         t.start()
     """
     logger.info("[UPLOADER] Upload loop started.")
+    init_db()
     while True:
         try:
             run_upload_cycle()
