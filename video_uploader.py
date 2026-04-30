@@ -114,8 +114,8 @@ def _notify_backend(
     """
     payload = {
         "videoKey":      file_name,
-        "startTime":     start_time,
-        "endTime":       end_time,
+        "startTime":     start_time+"Z",
+        "endTime":       end_time+"Z",
         "globalVideoId": global_video_id,
         "format":        "P1080",
         "cameraType":    camera_type+"SIDE",
