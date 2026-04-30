@@ -120,11 +120,12 @@ def _notify_backend(
         "format":        "P1080",
         "cameraType":    camera_type+"SIDE",
     }
-
+    headers.update({"Content-Type": "multipart/form-data"})
+    
     logger.info(f"[UPLOADER] Notifying backend: {payload}")
     response = requests.post(
         VIDEO_NOTIFY_ENDPOINT,
-        json=payload,
+        data=payload,
         headers=headers,
         timeout=30,
     )
