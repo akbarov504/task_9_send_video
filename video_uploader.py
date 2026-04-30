@@ -215,7 +215,19 @@ def run_upload_cycle() -> None:
     )
 
     if not videos:
-        logger.debug("[UPLOADER] No pending videos.")
+        # Debug: check why no videos returned
+        from db import DB_PATH
+        import sqlite3
+        from datetime import datetime, timedelta, timezone
+        with sqlite3.connect(DB_PATH) as conn:
+            c = conn.cursor()
+            c.execute("SELECT COUNT(*) FROM videos WHERE uploaded=0")
+            total = c.fetchone()[0]
+            c.execute("SELECT id, start_time, last_try FROM videos WHERE uploaded=0 LIMIT 3")
+            samples = c.fetchall()
+        threshold = (datetime.now(timezone.utc) - timedelta(seconds=MIN_VIDEO_AGE_SECONDS)).isoformat()
+        retry_thr = (datetime.now(timezone.utc) - timedelta(seconds=RETRY_INTERVAL_SECONDS)).isoformat()
+        logger.debug(f"[UPLOADER] No pending videos. Total unuploaded={total}, threshold={threshold}, retry_threshold={retry_thr}, samples={samples}")
         return
 
     logger.info(f"[UPLOADER] Cycle started: {len(videos)} video(s)")
