@@ -10,6 +10,7 @@ from config import (
     UPLOAD_CYCLE_INTERVAL,
     MIN_VIDEO_AGE_SECONDS,
     RETRY_INTERVAL_SECONDS,
+    TASK_7_VERTUAL_PATH
 )
 from token_manager import get_valid_token
 from db import (
@@ -146,6 +147,7 @@ def upload_video(video_row: tuple) -> bool:
     Row format: (id, file_path, camera_type, start_time, end_time, globalVideoId)
     """
     video_id, file_path, camera_type, start_time, end_time, global_video_id = video_row
+    file_path = os.path.join(TASK_7_VERTUAL_PATH, file_path)
 
     if not os.path.exists(file_path):
         logger.warning(f"[UPLOADER] File not found, skipping: {file_path}")
