@@ -113,14 +113,15 @@ def _notify_backend(
     Tells backend the video is ready in GCS.
     """
     payload = {
-        "fileName":      file_name,
+        "videoKey":      file_name,
         "startTime":     start_time,
         "endTime":       end_time,
         "globalVideoId": global_video_id,
         "format":        "P1080",
-        "cameraType":    camera_type,
+        "cameraType":    camera_type+"SIDE",
     }
     headers.update({"Content-Type": "multipart/form-data"})
+    
     logger.info(f"[UPLOADER] Notifying backend: {payload}")
     response = requests.post(
         VIDEO_NOTIFY_ENDPOINT,
