@@ -4,7 +4,7 @@ ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
 BASE_DIR = os.path.dirname(ROOT_DIR)
 PARENT_DIR = os.path.dirname(BASE_DIR)
 
-TASK_7_VERTUAL_PATH = os.path.join(BASE_DIR, "task_7_vertual")
+TASK_7_VERTUAL_PATH = os.path.join(PARENT_DIR, "task_7_vertual")
 LOCAL_PATH = os.path.join(TASK_7_VERTUAL_PATH, 'records/')
 DB_PATH = os.path.join(TASK_7_VERTUAL_PATH, 'adas_dms.db')
 
