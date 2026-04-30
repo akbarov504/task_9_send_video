@@ -4,7 +4,7 @@ import time
 import logging
 import requests
 
-from config import (
+from core.config import (
     API_BASE_STREAM,
     UPLOAD_BATCH_SIZE,
     UPLOAD_CYCLE_INTERVAL,
@@ -12,8 +12,8 @@ from config import (
     RETRY_INTERVAL_SECONDS,
     TASK_7_VERTUAL_PATH
 )
-from token_manager import get_valid_token
-from db import (
+from utils.token_manager import get_valid_token
+from core.db import (
     get_unuploaded_videos,
     mark_uploaded,
     increment_retry,
@@ -218,7 +218,7 @@ def run_upload_cycle() -> None:
 
     if not videos:
         # Debug: check why no videos returned
-        from db import DB_PATH
+        from core.db import DB_PATH
         import sqlite3
         from datetime import datetime, timedelta, timezone
         with sqlite3.connect(DB_PATH) as conn:

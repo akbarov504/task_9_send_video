@@ -1,5 +1,5 @@
 import sqlite3
-from config import DB_PATH
+from core.config import DB_PATH
 
 with sqlite3.connect(DB_PATH) as conn:
     c = conn.cursor()

@@ -1,5 +1,5 @@
 import os, sqlite3
-from config import DB_PATH
+from core.config import DB_PATH
 from datetime import datetime, timedelta, timezone
 
 def init_db():
