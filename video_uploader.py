@@ -90,7 +90,6 @@ def _notify_backend(
         "format":        "P1080",
         "cameraType":    camera_type+"SIDE",
         "filesize":      file_size,
-        "duration":      10,
         "extension":     "mp4" 
     }
     
