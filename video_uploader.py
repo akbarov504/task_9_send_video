@@ -20,6 +20,8 @@ from core.db import (
     init_db,
 )
 
+from datetime import datetime
+
 logger = logging.getLogger(__name__)
 
 UPLOAD_URL_ENDPOINT   = f"{API_BASE_STREAM}/google-cloud-storage/upload-url"
@@ -33,7 +35,9 @@ def _auth_headers() -> dict:
     }
 
 def _generate_filename(type: str, camera_type: str, start_time, global_id, ext: str = "mp4") -> str:
-    return f"safety/{type}/{camera_type.lower()}/50/{start_time}/{global_id}{start_time}.{ext}"
+    start_time_one_date = datetime.strptime(start_time, "%Y-%m-%d")
+    start_time_one_str = start_time_one_date.strftime("%Y-%m-%d")
+    return f"safety/{type}/{camera_type.lower()}/50/{start_time_one_str}/{global_id}{start_time}.{ext}"
 
 def _check_internet(timeout: int = 5) -> bool:
     import socket
@@ -176,7 +180,7 @@ def upload_video(video_row: tuple) -> bool:
 
     try:
         headers       = _auth_headers()
-        video_key     = _generate_filename("video", camera_type, start_time, global_video_id, "mp4")
+        video_key     = _generate_filename("video", camera_type+"SIDE", start_time, global_video_id, "mp4")
         thumbnail_key = None
 
         has_thumbnail = _extract_first_frame(file_path, screenshot_path)
@@ -185,7 +189,7 @@ def upload_video(video_row: tuple) -> bool:
         _upload_to_gcs(video_signed_url, file_path, content_type="video/mp4")
 
         if has_thumbnail and os.path.exists(screenshot_path):
-            thumbnail_key = _generate_filename("screenshot", camera_type, start_time, global_video_id, "webp")
+            thumbnail_key = _generate_filename("screenshot", camera_type+"SIDE", start_time, global_video_id, "webp")
             thumb_signed_url = _get_signed_upload_url(thumbnail_key, headers)
             _upload_to_gcs(thumb_signed_url, screenshot_path, content_type="image/webp")
         else:
