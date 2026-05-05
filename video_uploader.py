@@ -35,9 +35,8 @@ def _auth_headers() -> dict:
     }
 
 def _generate_filename(type: str, camera_type: str, start_time, global_id, ext: str = "mp4") -> str:
-    start_time_one_date = datetime.strptime(start_time, "%Y-%m-%d")
-    start_time_one_str = start_time_one_date.strftime("%Y-%m-%d")
-    return f"safety/{type}/{camera_type.lower()}/50/{start_time_one_str}/{global_id}{start_time}.{ext}"
+    start_time_one = start_time[:10]
+    return f"safety/{type}/{camera_type.lower()}/50/{start_time_one}/{global_id}{start_time}.{ext}"
 
 def _check_internet(timeout: int = 5) -> bool:
     import socket
