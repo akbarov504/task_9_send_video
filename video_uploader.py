@@ -10,7 +10,7 @@ from core.config import (
     UPLOAD_CYCLE_INTERVAL,
     MIN_VIDEO_AGE_SECONDS,
     RETRY_INTERVAL_SECONDS,
-    TASK_7_VERTUAL_PATH
+    TASK_7_VERTUAL_PATH,
 )
 from utils.token_manager import get_valid_token
 from core.db import (
@@ -32,8 +32,8 @@ def _auth_headers() -> dict:
         "Content-Type": "application/json",
     }
 
-def _generate_filename() -> str:
-    return f"{uuid.uuid4()}.mp4"
+def _generate_filename(ext: str = "mp4") -> str:
+    return f"{uuid.uuid4()}.{ext}"
 
 def _check_internet(timeout: int = 5) -> bool:
     import socket
@@ -44,7 +44,50 @@ def _check_internet(timeout: int = 5) -> bool:
     except (socket.error, OSError):
         return False
 
+def _calc_duration(start_time: str, end_time: str) -> int:
+    from datetime import datetime
+    fmt = "%Y-%m-%dT%H:%M:%S"
+    try:
+        delta = datetime.strptime(end_time, fmt) - datetime.strptime(start_time, fmt)
+        return max(1, int(delta.total_seconds()))
+    except Exception:
+        return 10
+
+def _extract_first_frame(video_path: str, output_path: str) -> bool:
+    """
+    Extract the first frame of the video as a JPEG screenshot using ffmpeg.
+    Lightweight — no Python dependencies, very low CPU usage.
+    Returns True on success, False on failure.
+    """
+    import subprocess
+    try:
+        result = subprocess.run(
+            [
+                "ffmpeg", "-y",          # overwrite output if exists
+                "-i", video_path,        # input video
+                "-vframes", "1",         # only 1 frame
+                "-q:v", "2",             # JPEG quality (2=best, 31=worst)
+                output_path,
+            ],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=15,
+        )
+        if result.returncode == 0 and os.path.exists(output_path):
+            logger.info(f"[UPLOADER] Screenshot saved: {output_path}")
+            return True
+        else:
+            logger.warning(f"[UPLOADER] ffmpeg failed for {video_path} (code={result.returncode})")
+            return False
+    except Exception as e:
+        logger.warning(f"[UPLOADER] Screenshot extraction failed: {e}")
+        return False
+
 def _get_signed_upload_url(file_name: str, headers: dict) -> str:
+    """
+    POST /api/google-cloud-storage/upload-url
+    Returns signed GCS URL (valid for 15 minutes).
+    """
     response = requests.post(
         UPLOAD_URL_ENDPOINT,
         json={"fileName": file_name},
@@ -59,15 +102,18 @@ def _get_signed_upload_url(file_name: str, headers: dict) -> str:
     logger.info(f"[UPLOADER] Signed URL received for {file_name}")
     return url
 
-def _upload_to_gcs(signed_url: str, file_path: str) -> None:
+def _upload_to_gcs(signed_url: str, file_path: str, content_type: str) -> None:
+    """
+    PUT file bytes directly to signed GCS URL.
+    Must be called immediately after _get_signed_upload_url (URL expires in 15 min).
+    """
     file_size = os.path.getsize(file_path)
     logger.info(f"[UPLOADER] Uploading to GCS: {file_path} ({file_size} bytes)")
-
     with open(file_path, "rb") as f:
         response = requests.put(
             signed_url,
             data=f,
-            headers={"Content-Type": "video/mp4"},
+            headers={"Content-Type": content_type},
             timeout=300,
         )
     response.raise_for_status()
@@ -75,24 +121,34 @@ def _upload_to_gcs(signed_url: str, file_path: str) -> None:
 
 def _notify_backend(
     file_name: str,
+    file_path: str,
+    thumbnail_key: str,
     start_time: str,
     end_time: str,
     global_video_id: str,
     camera_type: str,
     headers: dict,
-    file_size: int
 ) -> None:
+    """
+    POST /api/video/upload/v2
+    Tells backend the video + thumbnail are ready in GCS.
+    """
+    filesize = os.path.getsize(file_path) if os.path.exists(file_path) else 0
+    duration = _calc_duration(start_time, end_time)
+
     payload = {
         "videoKey":      file_name,
-        "startTime":     start_time+"Z",
-        "endTime":       end_time+"Z",
+        "thumbnailKey":  thumbnail_key,
+        "startTime":     start_time + "Z",
+        "endTime":       end_time + "Z",
         "globalVideoId": global_video_id,
         "format":        "P1080",
-        "cameraType":    camera_type+"SIDE",
-        "filesize":      file_size,
-        "extension":     "mp4" 
+        "cameraType":    camera_type + "SIDE",
+        "filesize":      filesize,
+        "duration":      duration,
+        "extension":     "mp4",
     }
-    
+
     logger.info(f"[UPLOADER] Notifying backend: {payload}")
     response = requests.post(
         VIDEO_NOTIFY_ENDPOINT,
@@ -104,6 +160,17 @@ def _notify_backend(
     logger.info(f"[UPLOADER] Backend notified. HTTP {response.status_code}")
 
 def upload_video(video_row: tuple) -> bool:
+    """
+    Full pipeline for one video:
+      1. Extract first frame as screenshot (JPEG)
+      2. Get signed URL for video, upload to GCS
+      3. Get signed URL for screenshot, upload to GCS
+      4. Notify backend with videoKey + thumbnailKey
+      5. Mark uploaded in DB
+      6. Delete local video + screenshot files
+
+    Row format: (id, file_path, camera_type, start_time, end_time, globalVideoId)
+    """
     video_id, file_path, camera_type, start_time, end_time, global_video_id = video_row
     file_path = os.path.join(TASK_7_VERTUAL_PATH, file_path)
 
@@ -112,31 +179,47 @@ def upload_video(video_row: tuple) -> bool:
         increment_retry(video_id)
         return False
 
-    try:
-        headers   = _auth_headers()
-        file_name = _generate_filename()
-        signed_url = _get_signed_upload_url(file_name, headers)
+    screenshot_path = file_path.rsplit(".", 1)[0] + "_thumb.webp"
 
-        _upload_to_gcs(signed_url, file_path)
-        file_size = os.path.getsize(file_path)
+    try:
+        headers      = _auth_headers()
+        video_key    = _generate_filename("mp4")
+        thumbnail_key = None
+
+        has_thumbnail = _extract_first_frame(file_path, screenshot_path)
+
+        video_signed_url = _get_signed_upload_url(video_key, headers)
+        _upload_to_gcs(video_signed_url, file_path, content_type="video/mp4")
+
+        if has_thumbnail and os.path.exists(screenshot_path):
+            thumbnail_key = _generate_filename("webp")
+            thumb_signed_url = _get_signed_upload_url(thumbnail_key, headers)
+            _upload_to_gcs(thumb_signed_url, screenshot_path, content_type="image/webp")
+        else:
+            logger.warning(f"[UPLOADER] No thumbnail for video_id={video_id}, skipping thumbnail upload.")
 
         _notify_backend(
-            file_name       = file_name,
+            file_name       = video_key,
+            file_path       = file_path,
+            thumbnail_key   = thumbnail_key,
             start_time      = start_time,
             end_time        = end_time,
             global_video_id = global_video_id,
             camera_type     = camera_type,
             headers         = headers,
-            file_size       = file_size
         )
 
         mark_uploaded(video_id)
-        try:
-            os.remove(file_path)
-            logger.info(f"[UPLOADER] ✓ video_id={video_id} uploaded as {file_name} — local file deleted.")
-        except OSError as e:
-            logger.warning(f"[UPLOADER] Could not delete local file {file_path}: {e}")
 
+        for path in [file_path, screenshot_path]:
+            try:
+                if os.path.exists(path):
+                    os.remove(path)
+                    logger.info(f"[UPLOADER] Deleted local file: {path}")
+            except OSError as e:
+                logger.warning(f"[UPLOADER] Could not delete {path}: {e}")
+
+        logger.info(f"[UPLOADER] video_id={video_id} done. video={video_key} thumbnail={thumbnail_key}")
         return True
 
     except requests.exceptions.RequestException as e:
@@ -147,6 +230,12 @@ def upload_video(video_row: tuple) -> bool:
         logger.error(f"[UPLOADER] Error (video_id={video_id}): {e}")
         increment_retry(video_id)
         return False
+    finally:
+        if os.path.exists(screenshot_path):
+            try:
+                os.remove(screenshot_path)
+            except OSError:
+                pass
 
 def run_upload_cycle() -> None:
     if not _check_internet():
@@ -179,6 +268,15 @@ def run_upload_cycle() -> None:
         upload_video(video_row)
 
 def upload_loop() -> None:
+    """
+    Calls run_upload_cycle() every UPLOAD_CYCLE_INTERVAL seconds.
+
+        import threading
+        from video_uploader import upload_loop
+
+        t = threading.Thread(target=upload_loop, daemon=True)
+        t.start()
+    """
     logger.info("[UPLOADER] Upload loop started.")
     init_db()
     while True:
