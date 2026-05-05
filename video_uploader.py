@@ -26,7 +26,6 @@ logger = logging.getLogger(__name__)
 UPLOAD_URL_ENDPOINT   = f"{API_BASE_STREAM}/google-cloud-storage/upload-url"
 VIDEO_NOTIFY_ENDPOINT = f"{API_BASE_STREAM}/video/upload/v2"
 
-
 def _auth_headers() -> dict:
     token = get_valid_token()
     return {
@@ -34,10 +33,8 @@ def _auth_headers() -> dict:
         "Content-Type": "application/json",
     }
 
-
-def _generate_filename(ext: str = "mp4") -> str:
-    return f"{uuid.uuid4()}.{ext}"
-
+def _generate_filename(type: str, camera_type: str, start_time, global_id, ext: str = "mp4") -> str:
+    return f"safety/{type}/{camera_type.lower()}/50/{start_time}/{global_id}{start_time}.{ext}"
 
 def _check_internet(timeout: int = 5) -> bool:
     import socket
@@ -48,7 +45,6 @@ def _check_internet(timeout: int = 5) -> bool:
     except (socket.error, OSError):
         return False
 
-
 def _calc_duration(start_time: str, end_time: str) -> int:
     from datetime import datetime
     fmt = "%Y-%m-%dT%H:%M:%S"
@@ -57,7 +53,6 @@ def _calc_duration(start_time: str, end_time: str) -> int:
         return max(1, int(delta.total_seconds()))
     except Exception:
         return 10
-
 
 def _extract_first_frame(video_path: str, output_path: str) -> bool:
     """
@@ -69,7 +64,6 @@ def _extract_first_frame(video_path: str, output_path: str) -> bool:
     from PIL import Image
     jpg_path = output_path.replace(".webp", "_tmp.jpg")
     try:
-        # Step 1 — extract first frame as jpg (ffmpeg, very fast)
         result = subprocess.run(
             ["ffmpeg", "-y", "-i", video_path, "-vframes", "1", "-q:v", "2", jpg_path],
             stdout=subprocess.DEVNULL,
@@ -81,7 +75,6 @@ def _extract_first_frame(video_path: str, output_path: str) -> bool:
             logger.warning(f"[UPLOADER] ffmpeg frame extraction failed: {err[-1] if err else 'unknown'}")
             return False
 
-        # Step 2 — convert jpg → webp (Pillow, lightweight)
         with Image.open(jpg_path) as img:
             img.save(output_path, "WEBP", quality=80)
 
@@ -92,13 +85,11 @@ def _extract_first_frame(video_path: str, output_path: str) -> bool:
         logger.warning(f"[UPLOADER] Screenshot extraction failed: {e}")
         return False
     finally:
-        # Always clean up temp jpg
         if os.path.exists(jpg_path):
             try:
                 os.remove(jpg_path)
             except OSError:
                 pass
-
 
 def _get_signed_upload_url(file_name: str, headers: dict) -> str:
     response = requests.post(
@@ -115,7 +106,6 @@ def _get_signed_upload_url(file_name: str, headers: dict) -> str:
     logger.info(f"[UPLOADER] Signed URL received for {file_name}")
     return url
 
-
 def _upload_to_gcs(signed_url: str, file_path: str, content_type: str) -> None:
     file_size = os.path.getsize(file_path)
     logger.info(f"[UPLOADER] Uploading to GCS: {file_path} ({file_size} bytes)")
@@ -128,7 +118,6 @@ def _upload_to_gcs(signed_url: str, file_path: str, content_type: str) -> None:
         )
     response.raise_for_status()
     logger.info(f"[UPLOADER] GCS upload done. HTTP {response.status_code}")
-
 
 def _notify_backend(
     file_name: str,
@@ -166,7 +155,6 @@ def _notify_backend(
     response.raise_for_status()
     logger.info(f"[UPLOADER] Backend notified. HTTP {response.status_code}")
 
-
 def upload_video(video_row: tuple) -> bool:
     """
     Full pipeline for one video:
@@ -189,25 +177,21 @@ def upload_video(video_row: tuple) -> bool:
 
     try:
         headers       = _auth_headers()
-        video_key     = _generate_filename("mp4")
+        video_key     = _generate_filename("video", camera_type, start_time, global_video_id, "mp4")
         thumbnail_key = None
 
-        # Step 1 — screenshot
         has_thumbnail = _extract_first_frame(file_path, screenshot_path)
 
-        # Step 2 — upload video
         video_signed_url = _get_signed_upload_url(video_key, headers)
         _upload_to_gcs(video_signed_url, file_path, content_type="video/mp4")
 
-        # Step 3 — upload screenshot
         if has_thumbnail and os.path.exists(screenshot_path):
-            thumbnail_key = _generate_filename("webp")
+            thumbnail_key = _generate_filename("screenshot", camera_type, start_time, global_video_id, "webp")
             thumb_signed_url = _get_signed_upload_url(thumbnail_key, headers)
             _upload_to_gcs(thumb_signed_url, screenshot_path, content_type="image/webp")
         else:
             logger.warning(f"[UPLOADER] No thumbnail for video_id={video_id}, skipping thumbnail upload.")
 
-        # Step 4 — notify backend
         _notify_backend(
             file_name       = video_key,
             file_path       = file_path,
@@ -219,10 +203,8 @@ def upload_video(video_row: tuple) -> bool:
             headers         = headers,
         )
 
-        # Step 5 — mark done in DB
         mark_uploaded(video_id)
 
-        # Step 6 — delete local files
         for path in [file_path, screenshot_path]:
             try:
                 if os.path.exists(path):
@@ -243,13 +225,11 @@ def upload_video(video_row: tuple) -> bool:
         increment_retry(video_id)
         return False
     finally:
-        # Always clean up screenshot even on failure
         if os.path.exists(screenshot_path):
             try:
                 os.remove(screenshot_path)
             except OSError:
                 pass
-
 
 def run_upload_cycle() -> None:
     if not _check_internet():
@@ -280,7 +260,6 @@ def run_upload_cycle() -> None:
     logger.info(f"[UPLOADER] Cycle started: {len(videos)} video(s)")
     for video_row in videos:
         upload_video(video_row)
-
 
 def upload_loop() -> None:
     """
