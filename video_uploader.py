@@ -12,7 +12,7 @@ from core.config import (
     RETRY_INTERVAL_SECONDS,
     TASK_7_VERTUAL_PATH,
 )
-from utils.token_manager import get_valid_token
+from utils.token_manager import get_shared_token
 from core.db import (
     get_unuploaded_videos,
     mark_uploaded,
@@ -26,7 +26,7 @@ UPLOAD_URL_ENDPOINT   = f"{API_BASE_STREAM}/google-cloud-storage/upload-url"
 VIDEO_NOTIFY_ENDPOINT = f"{API_BASE_STREAM}/video/upload/v2"
 
 def _auth_headers() -> dict:
-    token = get_valid_token()
+    token = get_shared_token()
     return {
         "Authorization": f"Bearer {token}",
         "Content-Type": "application/json",
