@@ -32,7 +32,7 @@ def _auth_headers() -> dict:
         "Content-Type": "application/json",
     }
 
-def _generate_filename(type: str, camera_type: str, start_time, global_id, ext: str = "mp4") -> str:
+def _generate_filename(type: str, camera_type: str, start_time: str, global_id: str, ext: str = "mp4") -> str:
     start_time_one = start_time[:10]
     return f"safety/{type}/{camera_type.lower()}/50/{start_time_one}/{global_id}{start_time}.{ext}"
 
@@ -45,14 +45,31 @@ def _check_internet(timeout: int = 5) -> bool:
     except (socket.error, OSError):
         return False
 
+def _parse_utc_dt(dt_str: str):
+    """
+    ISO 8601 UTC string parse qiladi.
+    Qabul qiladi: "2026-05-25T08:30:00Z" yoki "2026-05-25T08:30:00"
+    """
+    from datetime import datetime, timezone
+    dt_str = dt_str.rstrip("Z")
+    dt = datetime.strptime(dt_str, "%Y-%m-%dT%H:%M:%S")
+    return dt.replace(tzinfo=timezone.utc)
+
 def _calc_duration(start_time: str, end_time: str) -> int:
-    from datetime import datetime
-    fmt = "%Y-%m-%dT%H:%M:%S"
     try:
-        delta = datetime.strptime(end_time, fmt) - datetime.strptime(start_time, fmt)
+        delta = _parse_utc_dt(end_time) - _parse_utc_dt(start_time)
         return max(1, int(delta.total_seconds()))
     except Exception:
         return 10
+
+def _to_utc_z(dt_str: str) -> str:
+    """
+    Har qanday formatdagi vaqtni "2026-05-25T08:30:00Z" ko'rinishiga keltiradi.
+    Agar allaqachon Z bilan tugasa — o'zgarmaydi.
+    """
+    dt_str = dt_str.rstrip("Z")
+    dt = _parse_utc_dt(dt_str)
+    return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
 
 def _extract_first_frame(video_path: str, output_path: str) -> bool:
     """
@@ -135,8 +152,8 @@ def _notify_backend(
     payload = {
         "videoKey":      file_name,
         "thumbnailKey":  thumbnail_key,
-        "startTime":     start_time + "Z",
-        "endTime":       end_time + "Z",
+        "startTime":     _to_utc_z(start_time),
+        "endTime":       _to_utc_z(end_time),
         "globalVideoId": global_video_id,
         "format":        "P1080",
         "cameraType":    camera_type + "SIDE",
@@ -177,7 +194,7 @@ def upload_video(video_row: tuple) -> bool:
 
     try:
         headers       = _auth_headers()
-        video_key     = _generate_filename("video", camera_type+"SIDE", start_time, global_video_id, "mp4")
+        video_key     = _generate_filename("video", camera_type + "SIDE", start_time, global_video_id, "mp4")
         thumbnail_key = None
 
         has_thumbnail = _extract_first_frame(file_path, screenshot_path)
@@ -186,7 +203,7 @@ def upload_video(video_row: tuple) -> bool:
         _upload_to_gcs(video_signed_url, file_path, content_type="video/mp4")
 
         if has_thumbnail and os.path.exists(screenshot_path):
-            thumbnail_key = _generate_filename("screenshot", camera_type+"SIDE", start_time, global_video_id, "webp")
+            thumbnail_key = _generate_filename("screenshot", camera_type + "SIDE", start_time, global_video_id, "webp")
             thumb_signed_url = _get_signed_upload_url(thumbnail_key, headers)
             _upload_to_gcs(thumb_signed_url, screenshot_path, content_type="image/webp")
         else:
@@ -245,15 +262,16 @@ def run_upload_cycle() -> None:
     if not videos:
         from core.db import DB_PATH
         import sqlite3
-        from datetime import datetime, timedelta, timezone
+        from datetime import datetime, timezone, timedelta
         with sqlite3.connect(DB_PATH) as conn:
             c = conn.cursor()
             c.execute("SELECT COUNT(*) FROM videos WHERE uploaded=0")
             total = c.fetchone()[0]
             c.execute("SELECT id, start_time, last_try FROM videos WHERE uploaded=0 LIMIT 3")
             samples = c.fetchall()
-        threshold = (datetime.now(timezone.utc) - timedelta(seconds=MIN_VIDEO_AGE_SECONDS)).isoformat()
-        retry_thr = (datetime.now(timezone.utc) - timedelta(seconds=RETRY_INTERVAL_SECONDS)).isoformat()
+        now_utc   = datetime.now(timezone.utc)
+        threshold = (now_utc - timedelta(seconds=MIN_VIDEO_AGE_SECONDS)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        retry_thr = (now_utc - timedelta(seconds=RETRY_INTERVAL_SECONDS)).strftime("%Y-%m-%dT%H:%M:%SZ")
         logger.debug(f"[UPLOADER] No pending videos. Total unuploaded={total}, threshold={threshold}, retry_threshold={retry_thr}, samples={samples}")
         return
 
@@ -262,15 +280,6 @@ def run_upload_cycle() -> None:
         upload_video(video_row)
 
 def upload_loop() -> None:
-    """
-    Calls run_upload_cycle() every UPLOAD_CYCLE_INTERVAL seconds.
-
-        import threading
-        from video_uploader import upload_loop
-
-        t = threading.Thread(target=upload_loop, daemon=True)
-        t.start()
-    """
     logger.info("[UPLOADER] Upload loop started.")
     init_db()
     while True:
