@@ -41,10 +41,10 @@ UPLOAD_RETRY_INTERVAL = 60  # seconds
 QUEUE_SIZE = 50
 
 # Video upload settings
-UPLOAD_BATCH_SIZE = 8          # videos per upload cycle
-UPLOAD_CYCLE_INTERVAL = 5     # seconds between upload cycles
+UPLOAD_BATCH_SIZE = 16          # videos per upload cycle
+UPLOAD_CYCLE_INTERVAL = 2     # seconds between upload cycles
 MIN_VIDEO_AGE_SECONDS = 2      # wait N seconds after video is written before uploading
-RETRY_INTERVAL_SECONDS = 15    # seconds before retrying a failed video upload
+RETRY_INTERVAL_SECONDS = 10    # seconds before retrying a failed video upload
 
 #Video and audio
 BUFFER_LEN = 20

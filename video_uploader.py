@@ -3,6 +3,7 @@ import time
 import logging
 import requests
 import subprocess
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from core.config import (
     API_BASE_STREAM,
@@ -24,6 +25,7 @@ logger = logging.getLogger(__name__)
 
 UPLOAD_URL_ENDPOINT   = f"{API_BASE_STREAM}/google-cloud-storage/upload-url"
 VIDEO_NOTIFY_ENDPOINT = f"{API_BASE_STREAM}/video/upload/v2"
+UPLOAD_MAX_WORKERS = UPLOAD_BATCH_SIZE
 
 def _auth_headers() -> dict:
     token = get_shared_token()
@@ -275,9 +277,17 @@ def run_upload_cycle() -> None:
         logger.debug(f"[UPLOADER] No pending videos. Total unuploaded={total}, threshold={threshold}, retry_threshold={retry_thr}, samples={samples}")
         return
 
-    logger.info(f"[UPLOADER] Cycle started: {len(videos)} video(s)")
-    for video_row in videos:
-        upload_video(video_row)
+    logger.info(f"[UPLOADER] Cycle started: {len(videos)} video(s), parallel workers={UPLOAD_MAX_WORKERS}")
+    with ThreadPoolExecutor(max_workers=UPLOAD_MAX_WORKERS) as executor:
+        futures = {executor.submit(upload_video, row): row for row in videos}
+        for future in as_completed(futures):
+            video_row = futures[future]
+            video_id = video_row[0]
+            try:
+                future.result()
+            except Exception as e:
+                logger.error(f"[UPLOADER] Thread crashed for video_id={video_id}: {e}")
+                increment_retry(video_id)
 
 def upload_loop() -> None:
     logger.info("[UPLOADER] Upload loop started.")

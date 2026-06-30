@@ -78,7 +78,7 @@ def video_exists(file_path):
         c.execute("SELECT 1 FROM videos WHERE file_path = ? LIMIT 1", (file_path,))
         return c.fetchone() is not None
 
-def get_unuploaded_videos(limit=10, min_age_seconds=2, retry_interval=15, newest_first=True):
+def get_unuploaded_videos(limit=16, min_age_seconds=2, retry_interval=15, newest_first=True):
     """
     Fetch unuploaded videos from DB.
 
