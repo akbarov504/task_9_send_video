@@ -4,7 +4,8 @@ ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
 BASE_DIR = os.path.dirname(ROOT_DIR)
 PARENT_DIR = os.path.dirname(BASE_DIR)
 
-TASK_7_VERTUAL_PATH = os.path.join(PARENT_DIR, "VIDEO_CAT/1.0.0-beta/")
+# TASK_7_VERTUAL_PATH = os.path.join(PARENT_DIR, "VIDEO_CAT/1.0.0-beta/")
+TASK_7_VERTUAL_PATH = "/home/graperain/Documents/soft_projects/task_15_agent/downloaded/software/VIDEO_CAT/1.0.0-beta/"
 LOCAL_PATH = os.path.join(TASK_7_VERTUAL_PATH, 'records/')
 DB_PATH = os.path.join(TASK_7_VERTUAL_PATH, 'adas_dms.db')
 
